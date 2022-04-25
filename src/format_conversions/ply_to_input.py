@@ -109,3 +109,4 @@ def write_input_file(path_name, normals, vertices):
     file1.write(output)
     file1.close()
     
+main("bun_zipper_res2", "clean_bun_res2")
