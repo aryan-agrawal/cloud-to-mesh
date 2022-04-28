@@ -13,7 +13,43 @@ import numpy as np
 # input: map of vertex indices to faces
 # output: map of vertex indices to vertex normals
 def create_normals(vert_to_faces, vertex_positions):
-    pass
+
+    # map from vertex indices to vertex normals
+    normal_dic = {}
+    # map from vertex indices to vertex positions (only vertices on faces)
+    correct_vertices = {}
+
+    for a in vert_to_faces.keys():
+        # add vertex to correct_vertices since it's on a face
+        correct_vertices[a] = vertex_positions[a]
+        current = []
+        
+        # calculate normal for each face
+        for face in vert_to_faces[a]:
+            point_a = vertex_positions[face[0]]
+            point_b = vertex_positions[face[1]]
+            point_c = vertex_positions[face[2]]
+
+            vector1 = point_b - point_a
+            vector2 = point_c - point_a
+
+            npvec1 = np.array(vector1)
+            npvec2 = np.array(vector2)
+
+            final_cross = np.cross(npvec1, npvec2)
+            temp = np.linalg.norm(final_cross)
+
+            if temp != 0:
+                final_cross /= temp
+
+            current.append(final_cross)
+
+        normal_vec = np.average(current, axis=0)
+        normal_vec /= np.linalg.norm(normal_vec)
+        normal_dic[a] = normal_vec
+
+    return normal_dic, correct_vertices
+
 
 def read_ply_file(path_name):
     # read ply file
@@ -55,7 +91,7 @@ def main(path_name, output_path_name):
     # given the map and list, call create_normals
     # call write_input_file
     vertices, face_map, faces = read_ply_file(path_name)
-    normals = create_normals(face_map, vertices)
+    normals, vertices = create_normals(face_map, vertices)
     write_input_file(output_path_name, normals, vertices)
 
 def write_input_file(path_name, normals, vertices):
@@ -63,7 +99,7 @@ def write_input_file(path_name, normals, vertices):
     output = ""
     num_vertices = len(normals.keys())
     output += str(num_vertices) + "\n"
-    for index in len(vertices):
+    for index in normals.keys():
         # the normal of that vertex
         vertex_coords = vertices[index]
         vertex_normal = normals[index]
@@ -73,3 +109,4 @@ def write_input_file(path_name, normals, vertices):
     file1.write(output)
     file1.close()
     
+main("bun_zipper_res2", "clean_bun_res2")
