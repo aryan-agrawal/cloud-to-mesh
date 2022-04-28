@@ -6,6 +6,7 @@ and calculated faces.
 from json.encoder import INFINITY
 import open3d as o3d
 import numpy as np
+# from vertex import *
 from vertex import Vertex
 from triangle import Triangle
 
@@ -107,7 +108,7 @@ def get_voxel_coords(vertex, radius):
 def bpa(radius):
     unused_vertices = vertices
     seed_tri = find_seed_triangle(radius, unused_vertices)
-    
+    print(seed_tri.vertices)
     pass
 
 def pivot(edge):
