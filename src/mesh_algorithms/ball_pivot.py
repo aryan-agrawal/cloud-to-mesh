@@ -9,6 +9,7 @@ import numpy as np
 # from vertex import *
 from vertex import Vertex
 from triangle import Triangle
+import random
 
 def read_input(path_name):
     # read the input vertices and return a two lists, one of each vertex and one of each normal
@@ -29,6 +30,12 @@ def find_seed_triangle(radius, unused):
     # select any unused vertex
     if not unused:
         return None
+
+    # Shuffle vertices for debugging
+    random.shuffle(unused)
+    for i in range(len(unused)):
+        unused[i].index = i
+
     for v in unused:
         # consider all pairs of vertices in the same neighborhood as that vertex
         neighbors = get_neighbors(v, radius)
@@ -63,7 +70,13 @@ def find_seed_triangle(radius, unused):
                 c = v2.coord_distance(v) # c = v1
                 h_x = a**2 * (b**2 + c**2 - a**2)
                 h_y = b**2 * (a**2 + c**2 - b**2) 
-                h_z = c**2 * (a**2 + b**2 - c**2) 
+                h_z = c**2 * (a**2 + b**2 - c**2)
+
+                # normalize barycentric coords
+                sum = h_x + h_y + h_z
+                h_x /= sum
+                h_y /= sum
+                h_z /= sum 
                 h = h_x * v2.coord + h_y * v.coord + h_z * v1.coord
 
                 r_2 = (a**2 * b**2 * c**2) / ((a + b + c) * (b + c - a) * (c + a - b) * (a + b - c))
@@ -71,7 +84,7 @@ def find_seed_triangle(radius, unused):
                     # ball doesn't pass radius check 
                     continue
                 sphere_center = h + (np.sqrt(radius**2 - r_2) * (triangle_normal / np.linalg.norm(triangle_normal)))
-                
+
                 # check that sphere doesn't contain any other points 
                 # check the neighborhood of the center of the sphere
                 sphere_vertex = Vertex(-1, sphere_center, None)
@@ -175,27 +188,28 @@ def write_output():
 def visualize(radius, triangle, ball_center):
     pcd = o3d.geometry.PointCloud()
     points = np.array([(v.coord[0], v.coord[1], v.coord[2]) for v in vertices])
+    color_mask = np.zeros((points.shape[0], 3))
+
+    # color seed triangle vertices green
+    color_mask[triangle.vertices[0].index] = np.array([0, 1, 0])
+    color_mask[triangle.vertices[1].index] = np.array([0, 1, 0])
+    color_mask[triangle.vertices[2].index] = np.array([0, 1, 0])
     pcd.points = o3d.utility.Vector3dVector(points)
-    # o3d.visualization.draw_geometries([pcd])
+    pcd.colors = o3d.utility.Vector3dVector(color_mask)
 
     line_set = o3d.geometry.LineSet()
     line_set.points = o3d.utility.Vector3dVector(points)
 
     indices = [v.index for v in triangle.vertices]
-    normals = []
-    normals.append([indices[0], indices[1]])
-    normals.append([indices[1], indices[2]])
-    normals.append([indices[2], indices[0]])
-    line_set.lines = o3d.utility.Vector2iVector(normals)
+    edges = []
+    edges.append([indices[0], indices[1]])
+    edges.append([indices[1], indices[2]])
+    edges.append([indices[2], indices[0]])
+    line_set.lines = o3d.utility.Vector2iVector(edges)
 
+    # draw ball
     sphere = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
-    print(ball_center)
-    sphere_transform = np.asarray(
-                [[0, 0, 0, 0],
-                [0, 0, 0, 0],
-                [0, 0, 0, 0],
-                [ball_center[0], ball_center[1], ball_center[2], 1.0]])
-    sphere.transform(sphere_transform)
+    sphere.translate((ball_center[0], ball_center[1], ball_center[2]))
 
     o3d.visualization.draw_geometries([pcd, line_set, sphere])
     return
