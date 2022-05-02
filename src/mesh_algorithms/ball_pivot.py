@@ -32,9 +32,9 @@ def find_seed_triangle(radius, unused):
         return None
 
     # Shuffle vertices for debugging
-    random.shuffle(unused)
-    for i in range(len(unused)):
-        unused[i].index = i
+    # random.shuffle(unused)
+    # for i in range(len(unused)):
+    #     unused[i].index = i
 
     for v in unused:
         # consider all pairs of vertices in the same neighborhood as that vertex
