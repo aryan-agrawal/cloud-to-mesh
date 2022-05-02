@@ -2,10 +2,11 @@ import numpy as np
 
 class Vertex:
 
-    def __init__(self, index, coords, normal):
+    def __init__(self, index, coords, normal, edges=[]):
         self.index = index
         self.coord = coords # coords
         self.normal = normal
+        self.edges = edges
 
     def coord_distance(self, other):
         """

@@ -2,13 +2,12 @@
 Take input from ../../inputs/cleaned and output a ply file with the given vertices 
 and calculated faces.
 """
-
-from json.encoder import INFINITY
 import open3d as o3d
 import numpy as np
 # from vertex import *
 from vertex import Vertex
 from triangle import Triangle
+from edge import Edge
 
 def read_input(path_name):
     # read the input vertices and return a two lists, one of each vertex and one of each normal
@@ -87,6 +86,12 @@ def find_seed_triangle(vertices, radius, unused):
     return None
 
 def get_neighbors(vertex, radius):
+    """
+    input: a vertex coordinate, a radius distance
+    gets the coordiantes of the voxel this vertex belongs to and constructs a list of 
+    neighbors in the neighboring voxels.
+    output: a list of neighbor vertices
+    """
     voxel_coord = get_voxel_coords(vertex, radius)
     neighbors = []
     for i in [-1, 0, 1]:
@@ -103,15 +108,79 @@ def get_voxel_coords(vertex, radius):
     """
     coords = vertex.coord
     return coords // (radius * 2)
-    # return (vertex_coords[0] // (radius * 2), vertex_coords[1] // (radius * 2), vertex_coords[2] // (radius * 2))
 
 def bpa(radius):
-    unused_vertices = vertices
-    seed_tri = find_seed_triangle(radius, unused_vertices)
-    print(seed_tri.vertices)
+    unused_vertices = set(vertices) # constant time additions and deletions
+    triangle_mesh = []
+    while (unused_vertices):
+        seed_tri = find_seed_triangle(radius, unused_vertices)
+        if seed_tri is None:
+            break
+            #return
+        # remove the vertices in seed_tri from unused_vertices
+        unused_vertices.remove(seed_tri.vertices[0])
+        unused_vertices.remove(seed_tri.vertices[1])
+        unused_vertices.remove(seed_tri.vertices[2])
+        triangle_mesh += [seed_tri]
+        # expand triangulation
+        updated_mesh = expand_triangulation(triangle_mesh, seed_tri, radius)
+
+
+        
+        # print(seed_tri.vertices)
     pass
 
-def pivot(edge):
+def expand_triangulation(triangle_mesh, seed_tri, radius):
+    # create a front of edges
+    edge_front = [] 
+    edge0 = Edge(seed_tri.vertices[0], seed_tri.vertices[1], Edge.EdgeType.FRONT, [seed_tri])
+    edge1 = Edge(seed_tri.vertices[1], seed_tri.vertices[2], Edge.EdgeType.FRONT, [seed_tri])
+    edge2 = Edge(seed_tri.vertices[2], seed_tri.vertices[0], Edge.EdgeType.FRONT, [seed_tri])
+    edge_front += [edge0, edge1, edge2]
+    while len(edge_front) > 0:
+        # pop from the front
+        curr_edge = edge_front.pop(0)
+        if curr_edge.edge_type == Edge.EdgeType.BOUNDARY or curr_edge.edge_type == Edge.EdgeType.FROZEN:
+            continue
+        new_vertex = find_candidate(curr_edge, radius)
+        if new_vertex is None:
+            curr_edge.edge_type = Edge.EdgeType.BOUNDARY
+        new_tri = Triangle(curr_edge.vertices[0], curr_edge.vertices[1], new_vertex) # check this order
+        triangle_mesh.append(new_tri)
+        # e_s is the edge linking source and new_vertex
+        edge_s = None
+        for edge in new_vertex.edges:
+            if curr_edge.vertices[0] in edge.vertices:
+                edge_s = edge 
+                edge.edge_type = Edge.EdgeType.FROZEN
+                break 
+        if not edge_s:
+            # define a new edge
+            edge_s = Edge(curr_edge.vertices[0], new_vertex)
+            edge_front.append(edge_s)
+        
+        # e_t is the edge linking target and new_vertex
+        edge_t = None
+        for edge in new_vertex.edge:
+            if curr_edge.vertices[1] in edge.vertices:
+                edge_t = edge 
+                edge.edge_type = Edge.EdgeType.FROZEN
+                break 
+        if not edge_t:
+            # define a new edge
+            edge_t = Edge(curr_edge.vertices[1], new_vertex)
+            edge_front.append(edge_t)
+    return triangle_mesh
+
+
+def find_candidate(edge, radius):
+    # returns the candidate vertex + edge that the sphere hits
+    facet = edge.triangles[0]
+    circumcenter = facet.circumcenter
+    midpoint = ((edge.vertices[1].coord - edge.vertices[0].coord) / 2) + edge.vertices[0].coord
+    r_prime = np.linalg.norm(midpoint - circumcenter) + radius
+    theta_min = 2 * np.pi
+    
     pass
 
 def create_voxels(r):
@@ -139,7 +208,7 @@ def set_r():
     curr_sum = 0
     count = 0
     for p1 in vertices:
-        min_dist = INFINITY
+        min_dist = np.inf
         for p2 in vertices:
             if p1 != p2:
                 dist = p1.coord_distance(p2)
