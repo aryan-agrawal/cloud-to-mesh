@@ -24,10 +24,16 @@ def read_input(path_name):
             count += 1
 
 
-def find_seed_triangle(vertices, radius, unused):
+def find_seed_triangle(radius, unused):
     # select any unused vertex
     if not unused:
         return None
+
+    # Shuffle vertices for debugging
+    # random.shuffle(unused)
+    # for i in range(len(unused)):
+    #     unused[i].index = i
+
     for v in unused:
         # consider all pairs of vertices in the same neighborhood as that vertex
         neighbors = get_neighbors(v, radius)
@@ -60,16 +66,23 @@ def find_seed_triangle(vertices, radius, unused):
                 a = v.coord_distance(v1)  # a = v2
                 b = v1.coord_distance(v2) # b = v
                 c = v2.coord_distance(v) # c = v1
-                h_x = a**2 * (b**2 + c**2 - a**2) * v2.coord
-                h_y = b**2 * (a**2 + c**2 - b**2) * v.coord
-                h_z = c**2 * (a**2 + b**2 - c**2) * v1.coord
+                h_x = a**2 * (b**2 + c**2 - a**2)
+                h_y = b**2 * (a**2 + c**2 - b**2) 
+                h_z = c**2 * (a**2 + b**2 - c**2)
+
+                # normalize barycentric coords
+                sum = h_x + h_y + h_z
+                h_x /= sum
+                h_y /= sum
+                h_z /= sum 
+                h = h_x * v2.coord + h_y * v.coord + h_z * v1.coord
 
                 r_2 = (a**2 * b**2 * c**2) / ((a + b + c) * (b + c - a) * (c + a - b) * (a + b - c))
                 if (radius ** 2 - r_2) < 0:
                     # ball doesn't pass radius check 
                     continue
-                sphere_center = np.array(h_x, h_y, h_z) + (np.sqrt(radius**2 - r_2) * (triangle_normal / np.linalg.norm(triangle_normal)))
-                
+                sphere_center = h + (np.sqrt(radius**2 - r_2) * (triangle_normal / np.linalg.norm(triangle_normal)))
+
                 # check that sphere doesn't contain any other points 
                 # check the neighborhood of the center of the sphere
                 sphere_vertex = Vertex(-1, sphere_center, None)
@@ -82,7 +95,7 @@ def find_seed_triangle(vertices, radius, unused):
                 if not(valid_candidate):
                     continue
                 else:
-                    return candidate
+                    return candidate, sphere_center
     return None
 
 def get_neighbors(vertex, radius):
@@ -97,7 +110,10 @@ def get_neighbors(vertex, radius):
     for i in [-1, 0, 1]:
         for j in [-1, 0, 1]:
             for k in [-1, 0, 1]:
-                voxel_pts = voxel_map.get((voxel_coord[0]+i, voxel_coord[1]+j, voxel_coord[2]+k))
+                key = (voxel_coord[0]+i, voxel_coord[1]+j, voxel_coord[2]+k)
+                # print(key)
+                # voxel_pts = voxel_map.get((voxel_coord[0]+i, voxel_coord[1]+j, voxel_coord[2]+k))
+                voxel_pts = voxel_map.get(key)
                 if voxel_pts:
                     neighbors += voxel_pts
     return neighbors
@@ -113,7 +129,7 @@ def bpa(radius):
     unused_vertices = set(vertices) # constant time additions and deletions
     triangle_mesh = []
     while (unused_vertices):
-        seed_tri = find_seed_triangle(radius, unused_vertices)
+        seed_tri, _ = find_seed_triangle(radius, unused_vertices)
         if seed_tri is None:
             break
             #return
@@ -224,19 +240,44 @@ def main(path_name):
     radius = set_r()
     # print(radius)
     create_voxels(radius)
-    visualize(radius)
+    result = bpa(radius)
+    # visualize(radius)
     # print(voxel_map)
-    # result = bpa(vertices, normals, radius, voxel_map)
+    
     # write_output(result)
 
 # in ply format, to ../../outputs
 def write_output():
     pass
 
-def visualize(radius):
+def visualize(radius, triangle, ball_center):
     pcd = o3d.geometry.PointCloud()
     points = np.array([(v.coord[0], v.coord[1], v.coord[2]) for v in vertices])
+    color_mask = np.zeros((points.shape[0], 3))
+
+    # color seed triangle vertices green
+    color_mask[triangle.vertices[0].index] = np.array([0, 1, 0])
+    color_mask[triangle.vertices[1].index] = np.array([0, 1, 0])
+    color_mask[triangle.vertices[2].index] = np.array([0, 1, 0])
     pcd.points = o3d.utility.Vector3dVector(points)
+    pcd.colors = o3d.utility.Vector3dVector(color_mask)
+
+    line_set = o3d.geometry.LineSet()
+    line_set.points = o3d.utility.Vector3dVector(points)
+
+    indices = [v.index for v in triangle.vertices]
+    edges = []
+    edges.append([indices[0], indices[1]])
+    edges.append([indices[1], indices[2]])
+    edges.append([indices[2], indices[0]])
+    line_set.lines = o3d.utility.Vector2iVector(edges)
+
+    # draw ball
+    sphere = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
+    sphere.translate((ball_center[0], ball_center[1], ball_center[2]))
+
+    o3d.visualization.draw_geometries([pcd, line_set, sphere])
+    return
 
     # Visualize voxels
     color_mask = np.zeros((len(vertices), 3))
@@ -250,13 +291,13 @@ def visualize(radius):
     distY = maxY - minY
     distZ = maxZ - minZ
 
-    for voxel in voxel_map.keys():
-        colorX = (voxel[0] - minX) / distX
-        colorY = (voxel[1] - minY) / distY
-        colorZ = (voxel[2] - minZ) / distZ
-        color = np.array([colorX, colorY, colorZ])
-        # print(voxel[0], colorX)
-        color_mask[voxel_map[voxel]] = color
+    # for voxel in voxel_map.keys():
+    #     colorX = (voxel[0] - minX) / distX
+    #     colorY = (voxel[1] - minY) / distY
+    #     colorZ = (voxel[2] - minZ) / distZ
+    #     color = np.array([colorX, colorY, colorZ])
+    #     # print(voxel[0], colorX)
+    #     color_mask[voxel_map[voxel]] = color
 
     vertex_index = np.random.randint(0, len(vertices))
     # print(get_neighbors(voxel_map, vertices, vertex_index))
@@ -294,4 +335,4 @@ def visualize(radius):
 
 vertices = []
 voxel_map= {}
-main("clean_bun_res2")
+main("clean_bun_res4")
