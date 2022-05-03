@@ -105,6 +105,8 @@ def bpa(radius):
     updated_mesh = []
     # print("edge list lens: ", [len(v.edges) for v in vertices])
     cnt = 0
+    # set of all boundary edges
+    boundary_edges = {}
     while (unused_vertices):
         seed_tri, ball_center = find_seed_triangle(radius, unused_vertices)
         if seed_tri is None:
@@ -122,7 +124,7 @@ def bpa(radius):
         #     break
         # expand triangulation
         # breakpoint()
-        updated_mesh = expand_triangulation(updated_mesh, seed_tri, unused_vertices, radius)
+        updated_mesh, boundary_edges = expand_triangulation(updated_mesh, seed_tri, unused_vertices, radius, boundary_edges)
         # visualize(radius, [seed_tri], [ball_center, new_center])
         # for t in updated_mesh:
         #     print([v.index for v in t.vertices])
@@ -134,16 +136,28 @@ def bpa(radius):
         # print([v.index for v in t.vertices])
     # visualize(radius, updated_mesh, [ball_center])
     print("num seed triangles: ", cnt)
+
+    radius *= 2 # second pass
+    edge_front = []
+    for edge in boundary_edges:
+        adjacent_facet = edge.triangles[0]
+        opposite = [v for v in adjacent_facet.vertices if v not in edge.vertices][0]
+        center = compute_ball_center(radius, edge.vertices[0], opposite, edge.vertices[1])
+        if center is None:
+            continue
+        if is_empty_ball(edge.vertices[0], opposite, edge.vertices[1], center, radius):
+            edge_front.append(edge)
+    updated_mesh = expand_triangulation2(updated_mesh, radius, unused_vertices, edge_front)
     return updated_mesh
 
-def expand_triangulation(triangle_mesh, seed_tri, unused, radius):
+def expand_triangulation(triangle_mesh, seed_tri, unused, radius, boundary_edges):
     # create a front of edges
     edge_front = [] 
     edge0 = Edge(seed_tri.vertices[0], seed_tri.vertices[1], Edge.EdgeType.FRONT, [seed_tri])
     edge1 = Edge(seed_tri.vertices[1], seed_tri.vertices[2], Edge.EdgeType.FRONT, [seed_tri])
     edge2 = Edge(seed_tri.vertices[2], seed_tri.vertices[0], Edge.EdgeType.FRONT, [seed_tri])
     edge_front += [edge0, edge1, edge2]
-
+    
     # print("finding edge0 candidates: \n")
     # new_vertex, new_center = find_candidate(edge0, radius)
     # if new_vertex:
@@ -161,6 +175,58 @@ def expand_triangulation(triangle_mesh, seed_tri, unused, radius):
     #     visualize(radius, [seed_tri], [new_center])
     # return new_vertex, new_center
     
+    while len(edge_front) > 0:
+        # print([(e.vertices[0].index, e.vertices[1].index) for e in edge_front])
+        # pop from the front
+        curr_edge = edge_front.pop(0)
+        if curr_edge.edge_type == Edge.EdgeType.BOUNDARY or curr_edge.edge_type == Edge.EdgeType.FROZEN:
+            continue
+        new_vertex, center = find_candidate(curr_edge, radius)
+        if new_vertex is None:
+            # print("did not find any candidate")
+            curr_edge.edge_type = Edge.EdgeType.BOUNDARY
+            boundary_edges.add(curr_edge)
+            continue
+        if new_vertex in unused:
+            unused.remove(new_vertex)
+        new_tri = Triangle((curr_edge.vertices[0], curr_edge.vertices[1], new_vertex), circumcenter_pos=center) # check this order
+        # print("created new triangle: ", curr_edge.vertices[0].index, curr_edge.vertices[1].index, new_vertex.index)
+        triangle_mesh.append(new_tri)
+        # e_s is the edge linking source and new_vertex
+        edge_s = None
+        # print("edges of vertex: ", new_vertex.index)
+        # print([(e.vertices[0].index, e.vertices[1].index) for e in new_vertex.edges])
+        for edge in new_vertex.edges:
+            # print("new_vertex has edges")
+            if curr_edge.vertices[0] in edge.vertices:
+                edge_s = edge 
+                edge.edge_type = Edge.EdgeType.FROZEN
+                break 
+        if not edge_s:
+            # define a new edge
+            edge_s = Edge(curr_edge.vertices[0], new_vertex, Edge.EdgeType.FRONT, [new_tri])
+            # print("created a new edge")
+            edge_front.append(edge_s)
+            # print("created and added new edge")
+        
+        # e_t is the edge linking target and new_vertex
+        edge_t = None
+        for edge in new_vertex.edges:
+            # print("new_vertex has edges")
+            if curr_edge.vertices[1] in edge.vertices:
+                edge_t = edge 
+                edge.edge_type = Edge.EdgeType.FROZEN
+                break 
+        if not edge_t:
+            # define a new edge
+            edge_t = Edge(curr_edge.vertices[1], new_vertex, Edge.EdgeType.FRONT, [new_tri])
+            # print("created a new edge")
+            edge_front.append(edge_t)
+            # print("created and added new edge")
+    return triangle_mesh, boundary_edges
+
+
+def expand_triangulation2(triangle_mesh, radius, unused, edge_front):
     while len(edge_front) > 0:
         # print([(e.vertices[0].index, e.vertices[1].index) for e in edge_front])
         # pop from the front
@@ -209,7 +275,6 @@ def expand_triangulation(triangle_mesh, seed_tri, unused, radius):
             edge_front.append(edge_t)
             # print("created and added new edge")
     return triangle_mesh
-
 
 def find_candidate(edge, radius):
     # returns the candidate vertex + edge that the sphere hits
