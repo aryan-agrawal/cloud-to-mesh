@@ -8,6 +8,7 @@ import numpy as np
 from vertex import Vertex
 from triangle import Triangle
 from edge import Edge
+from plyfile import PlyData, PlyElement
 
 def read_input(path_name):
     # read the input vertices and return a two lists, one of each vertex and one of each normal
@@ -19,7 +20,7 @@ def read_input(path_name):
             tokens = line.split()
             coords = np.array([float(x) for x in tokens[:3]])
             normal = np.array([float(x) for x in tokens[3:]])
-            vertex = Vertex(count, coords, normal)
+            vertex = Vertex(count, coords, normal, edges=[])
             vertices.append(vertex)
             count += 1
 
@@ -70,7 +71,7 @@ def find_seed_triangle(radius, unused):
                     continue
 
                 return candidate, sphere_center
-    return None
+    return None, None
 
 def get_neighbors(vertex, radius):
     """
@@ -101,29 +102,41 @@ def get_voxel_coords(vertex, radius):
 
 def bpa(radius):
     unused_vertices = set(vertices) # constant time additions and deletions
-    triangle_mesh = []
+    updated_mesh = []
+    # print("edge list lens: ", [len(v.edges) for v in vertices])
+    cnt = 0
     while (unused_vertices):
         seed_tri, ball_center = find_seed_triangle(radius, unused_vertices)
-        print("seed tri: ", [v.index for v in seed_tri.vertices])
-        # visualize(radius, seed_tri, ball_center)
         if seed_tri is None:
             break
-            #return
+        cnt += 1
+        print("seed tri: ", [v.index for v in seed_tri.vertices])
+        # visualize(radius, seed_tri, ball_center)
         # remove the vertices in seed_tri from unused_vertices
-        unused_vertices.remove(seed_tri.vertices[0])
-        unused_vertices.remove(seed_tri.vertices[1])
-        unused_vertices.remove(seed_tri.vertices[2])
-        triangle_mesh += [seed_tri]
+        for i in range(3):
+            if seed_tri.vertices[i] in unused_vertices:
+                unused_vertices.remove(seed_tri.vertices[i])
+        updated_mesh += [seed_tri]
+        print("updated mesh len: ", len(updated_mesh))
+        # if len(updated_mesh) > 400:
+        #     break
         # expand triangulation
-        updated_mesh, new_center = expand_triangulation(triangle_mesh, seed_tri, radius)
-        visualize(radius, [seed_tri], [ball_center, new_center])
-        return
-
+        # breakpoint()
+        updated_mesh = expand_triangulation(updated_mesh, seed_tri, unused_vertices, radius)
+        # visualize(radius, [seed_tri], [ball_center, new_center])
+        # for t in updated_mesh:
+        #     print([v.index for v in t.vertices])
+        # visualize(radius, updated_mesh, [ball_center])
+        # return updated_mesh
         
         # print(seed_tri.vertices)
-    pass
+    # for t in updated_mesh:
+        # print([v.index for v in t.vertices])
+    # visualize(radius, updated_mesh, [ball_center])
+    print("num seed triangles: ", cnt)
+    return updated_mesh
 
-def expand_triangulation(triangle_mesh, seed_tri, radius):
+def expand_triangulation(triangle_mesh, seed_tri, unused, radius):
     # create a front of edges
     edge_front = [] 
     edge0 = Edge(seed_tri.vertices[0], seed_tri.vertices[1], Edge.EdgeType.FRONT, [seed_tri])
@@ -131,54 +144,70 @@ def expand_triangulation(triangle_mesh, seed_tri, radius):
     edge2 = Edge(seed_tri.vertices[2], seed_tri.vertices[0], Edge.EdgeType.FRONT, [seed_tri])
     edge_front += [edge0, edge1, edge2]
 
-    print("finding edge0 candidates: \n")
-    new_vertex, new_center = find_candidate(edge0, radius)
-    if new_vertex:
-        print("new candidate 1: ", new_vertex.index, new_vertex.coord, new_center)
-    print("finding edge1 candidates: \n")
-    new_vertex, new_center = find_candidate(edge1, radius)
-    if new_vertex:
-        print("new candidate 2: ", new_vertex.index, new_vertex.coord, new_center)
-    print("finding edge2 candidates: \n")
-    new_vertex, new_center = find_candidate(edge2, radius)
-    if new_vertex:
-        print("new candidate 3: ", new_vertex.index, new_vertex.coord, new_center)
-    return new_vertex, new_center
-
-
+    # print("finding edge0 candidates: \n")
+    # new_vertex, new_center = find_candidate(edge0, radius)
+    # if new_vertex:
+    #     print("new candidate 1: ", new_vertex.index, new_vertex.coord, new_center)
+    #     visualize(radius, [seed_tri], [new_center])
+    # print("finding edge1 candidates: \n")
+    # new_vertex, new_center = find_candidate(edge1, radius)
+    # if new_vertex:
+    #     print("new candidate 2: ", new_vertex.index, new_vertex.coord, new_center)
+    #     visualize(radius, [seed_tri], [new_center])
+    # print("finding edge2 candidates: \n")
+    # new_vertex, new_center = find_candidate(edge2, radius)
+    # if new_vertex:
+    #     print("new candidate 3: ", new_vertex.index, new_vertex.coord, new_center)
+    #     visualize(radius, [seed_tri], [new_center])
+    # return new_vertex, new_center
+    
     while len(edge_front) > 0:
+        # print([(e.vertices[0].index, e.vertices[1].index) for e in edge_front])
         # pop from the front
         curr_edge = edge_front.pop(0)
         if curr_edge.edge_type == Edge.EdgeType.BOUNDARY or curr_edge.edge_type == Edge.EdgeType.FROZEN:
             continue
         new_vertex, center = find_candidate(curr_edge, radius)
         if new_vertex is None:
+            # print("did not find any candidate")
             curr_edge.edge_type = Edge.EdgeType.BOUNDARY
+            continue
+        if new_vertex in unused:
+            unused.remove(new_vertex)
         new_tri = Triangle((curr_edge.vertices[0], curr_edge.vertices[1], new_vertex), circumcenter_pos=center) # check this order
+        # print("created new triangle: ", curr_edge.vertices[0].index, curr_edge.vertices[1].index, new_vertex.index)
         triangle_mesh.append(new_tri)
         # e_s is the edge linking source and new_vertex
         edge_s = None
+        # print("edges of vertex: ", new_vertex.index)
+        # print([(e.vertices[0].index, e.vertices[1].index) for e in new_vertex.edges])
         for edge in new_vertex.edges:
+            # print("new_vertex has edges")
             if curr_edge.vertices[0] in edge.vertices:
                 edge_s = edge 
                 edge.edge_type = Edge.EdgeType.FROZEN
                 break 
         if not edge_s:
             # define a new edge
-            edge_s = Edge(curr_edge.vertices[0], new_vertex)
+            edge_s = Edge(curr_edge.vertices[0], new_vertex, Edge.EdgeType.FRONT, [new_tri])
+            # print("created a new edge")
             edge_front.append(edge_s)
+            # print("created and added new edge")
         
         # e_t is the edge linking target and new_vertex
         edge_t = None
-        for edge in new_vertex.edge:
+        for edge in new_vertex.edges:
+            # print("new_vertex has edges")
             if curr_edge.vertices[1] in edge.vertices:
                 edge_t = edge 
                 edge.edge_type = Edge.EdgeType.FROZEN
                 break 
         if not edge_t:
             # define a new edge
-            edge_t = Edge(curr_edge.vertices[1], new_vertex)
+            edge_t = Edge(curr_edge.vertices[1], new_vertex, Edge.EdgeType.FRONT, [new_tri])
+            # print("created a new edge")
             edge_front.append(edge_t)
+            # print("created and added new edge")
     return triangle_mesh
 
 
@@ -206,16 +235,16 @@ def find_candidate(edge, radius):
 
         # print("v index past the check: ", v.index)
         # if v is not compatible with e
-        # if not is_compatible(edge.vertices[0], edge.vertices[1], v): # TODO: check ordering
-            # continue
+        if not is_compatible(edge.vertices[0], v, edge.vertices[1]): # TODO: check ordering
+            continue
 
-        print("was compatible: ", v.index)
+        # print("was compatible: ", v.index)
 
-        new_center = compute_ball_center(radius, edge.vertices[0], edge.vertices[1], v)
+        new_center = compute_ball_center(radius, edge.vertices[0], v, edge.vertices[1])
         if new_center is None:
             continue
 
-        print("ball existed: ", v.index)
+        # print("ball existed: ", v.index)
 
         # compute angle theta
         vec_b = new_center - midpoint
@@ -229,6 +258,7 @@ def find_candidate(edge, radius):
         theta = np.arccos(cosinus)
 
         if np.dot(np.cross(vec_a, vec_b), edge.vertices[1].coord - edge.vertices[0].coord) < 0:
+            # print("flipped sign of theta")
             theta = 2 * np.pi - theta
 
         if theta >= theta_min:
@@ -237,7 +267,7 @@ def find_candidate(edge, radius):
         if not is_empty_ball(edge.vertices[0], edge.vertices[1], v, new_center, radius):
             continue
 
-        print("is empty ball: ", v.index)
+        # print("is empty ball: ", v.index)
 
         theta_min = theta
         candidate = v
@@ -274,7 +304,7 @@ def compute_ball_center(radius, v, v1, v2):
     r_2 = (a**2 * b**2 * c**2) / ((a + b + c) * (b + c - a) * (c + a - b) * (a + b - c))
     if (radius ** 2 - r_2) < 0:
         # ball doesn't pass radius check
-        print("r_2 radius / radius: ", r_2, radius**2)
+        # print("r_2 radius / radius: ", r_2, radius**2)
         return None
 
     vector1 = v1.coord - v.coord
@@ -331,7 +361,7 @@ def set_r():
         curr_sum += min_dist
         count += 1
     average = curr_sum / count 
-    return average * 1.5 / 2
+    return average * 1.5
 
 def main(path_name):
     read_input(path_name)
@@ -342,11 +372,46 @@ def main(path_name):
     # visualize(radius)
     # print(voxel_map)
     
-    # write_output(result)
+    correct_ordering(result)
+    write_output(result)
+    model = o3d.io.read_triangle_mesh("../../outputs/bun_res4_mesh_1_5.ply")
+    o3d.visualization.draw_geometries([model])
+
+
+def correct_ordering(triangle_mesh):
+    for t in triangle_mesh:
+        v = t.vertices[0]
+        v1 = t.vertices[1]
+        v2 = t.vertices[2]
+        vector1 = v1.coord - v.coord
+        vector2 = v2.coord - v.coord
+        t_norm = np.cross(vector1, vector2)
+        d = np.dot(t_norm, v.normal)
+        d1 = np.dot(t_norm, v1.normal)
+        d2 = np.dot(t_norm, v2.normal)
+        if d < 0 and d1 < 0 and d2 < 0:
+            continue
+        elif d > 0 and d1 > 0 and d2 > 0:
+            t.vertices = (v, v2, v1)
+        else:
+            print("inconsistent normals")
+
 
 # in ply format, to ../../outputs
-def write_output():
-    pass
+def write_output(triangle_mesh):
+    vertices_np = np.empty((len(vertices),), dtype=[('x', 'f4'), ('y', 'f4'), ('z', 'f4')])
+    faces_np = np.empty((len(triangle_mesh),),  dtype=[('vertex_indices', 'i4', (3,))])
+    for i in range(len(vertices)):
+        vertices_np[i] = (vertices[i].coord[0], vertices[i].coord[1], vertices[i].coord[2])
+    # print(vertices_np)
+    for i in range(len(triangle_mesh)):
+        tri_verts = triangle_mesh[i].vertices
+        faces_np[i] = ([tri_verts[0].index, tri_verts[2].index, tri_verts[1].index])
+    # print(faces_np)
+    vertices_ply = PlyElement.describe(vertices_np, 'vertex')
+    faces_ply = PlyElement.describe(faces_np, 'face')
+    PlyData([vertices_ply, faces_ply], text=True).write("../../outputs/bun_res4_mesh_1_5.ply")
+
 
 def visualize(radius, triangles, ball_centers):
     pcd = o3d.geometry.PointCloud()
@@ -365,21 +430,23 @@ def visualize(radius, triangles, ball_centers):
     line_set = o3d.geometry.LineSet()
     line_set.points = o3d.utility.Vector3dVector(points)
 
+    edges = []
     for triangle in triangles:
+        # print("is a triangle")
         indices = [v.index for v in triangle.vertices]
-        edges = []
         edges.append([indices[0], indices[1]])
         edges.append([indices[1], indices[2]])
         edges.append([indices[2], indices[0]])
 
+    print(len(edges))
     line_set.lines = o3d.utility.Vector2iVector(edges)
 
     # draw ball
     spheres = []
-    for ball_center in ball_centers:
-        sphere = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
-        sphere.translate((ball_center[0], ball_center[1], ball_center[2]))
-        spheres.append(sphere)
+    # for ball_center in ball_centers:
+    #     sphere = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
+    #     sphere.translate((ball_center[0], ball_center[1], ball_center[2]))
+        # spheres.append(sphere)
 
     spheres += [pcd, line_set]
 
