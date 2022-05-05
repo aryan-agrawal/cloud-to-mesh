@@ -25,6 +25,55 @@ def read_input(path_name):
             count += 1
 
 
+def load_mesh(path_name):
+    filename = "../../outputs/" + path_name + ".ply"
+    with open(filename, 'rb') as f:
+        plydata = PlyData.read(f)
+        # num_verts = plydata['vertex'].count
+        # vertices = np.zeros(shape=[num_verts, 3], dtype=np.float32)
+        # vertices[:,0] = plydata['vertex'].data['x']
+        # vertices[:,1] = plydata['vertex'].data['y']
+        # vertices[:,2] = plydata['vertex'].data['z']
+        num_faces = plydata['face'].count 
+        faces = np.zeros(shape= [num_faces, 3], dtype=np.float32)
+        faces = plydata['face'].data
+        # triangle_mesh = 
+        print(faces)
+
+
+def get_boundary_edges(triangle_mesh):
+    for v in vertices:
+        v.edges = []
+
+    edge_set = set()
+    for t in triangle_mesh:
+        v, v1, v2 = t.vertices
+
+        e = get_edge(v, v1)
+        if e is None:
+            e = Edge(v, v1, Edge.EdgeType.FRONT, [t])
+            edge_set.add(e)
+        else:
+            e.triangles.append(t)
+
+        e1 = get_edge(v1, v2)
+        if e1 is None:
+            e1 = Edge(v1, v2, Edge.EdgeType.FRONT, [t])
+            edge_set.add(e1)
+        else:
+            e1.triangles.append(t)
+        
+        e2 = get_edge(v2, v)
+        if e2 is None:
+            e2 = Edge(v2, v, Edge.EdgeType.FRONT, [t])
+            edge_set.add(e2)
+        else:
+            e2.triangles.append(t)
+
+    return [e for e in edge_set if len(e.triangles) == 1]
+
+
+
 def find_seed_triangle(radius, unused):
     # select any unused vertex
     if not unused:
@@ -106,7 +155,7 @@ def bpa(radius):
     # print("edge list lens: ", [len(v.edges) for v in vertices])
     cnt = 0
     # set of all boundary edges
-    boundary_edges = {}
+    boundary_edges = set()
     while (unused_vertices):
         seed_tri, ball_center = find_seed_triangle(radius, unused_vertices)
         if seed_tri is None:
@@ -136,25 +185,92 @@ def bpa(radius):
         # print([v.index for v in t.vertices])
     # visualize(radius, updated_mesh, [ball_center])
     print("num seed triangles: ", cnt)
+    print("size of mesh after first pass: ", len(updated_mesh))
+    print("boundary edges: ", len(boundary_edges))
+    for edge in boundary_edges:
+        print([v.index for v in edge.vertices], len(edge.triangles), [v.index for v in edge.triangles[0].vertices], edge.edge_type)
+
+
+    print("getting boundary edges")
+    boundary_edges = get_boundary_edges(updated_mesh)
+    print("got boundary edges")
+    visualize(radius, updated_mesh, boundary_edges)
+    return updated_mesh
 
     radius *= 2 # second pass
+    create_voxels(radius)
+    print("boundary_edges: ", len(boundary_edges))
     edge_front = []
     for edge in boundary_edges:
         adjacent_facet = edge.triangles[0]
         opposite = [v for v in adjacent_facet.vertices if v not in edge.vertices][0]
         center = compute_ball_center(radius, edge.vertices[0], opposite, edge.vertices[1])
+        print("computed ball center")
         if center is None:
             continue
         if is_empty_ball(edge.vertices[0], opposite, edge.vertices[1], center, radius):
+            edge.edge_type = Edge.EdgeType.FRONT
             edge_front.append(edge)
+    print("edge front: ", len(edge_front))
+    breakpoint()
     updated_mesh = expand_triangulation2(updated_mesh, radius, unused_vertices, edge_front)
+    print("size of mesh after second pass: ", len(updated_mesh))
     return updated_mesh
+
+def get_edge(v1, v2):
+    for edge in v2.edges:
+        if v1 in edge.vertices:
+            return edge
+    return None
 
 def expand_triangulation(triangle_mesh, seed_tri, unused, radius, boundary_edges):
     # create a front of edges
-    edge_front = [] 
+    edge_front = []
+    # edge0 = get_edge(seed_tri.vertices[0], seed_tri.vertices[1])
+    # if edge0 is None:
+    #     edge0 = Edge(seed_tri.vertices[0], seed_tri.vertices[1], Edge.EdgeType.FRONT, triangles=[])
+    # edge0.triangles.append(seed_tri)
+    # if len(edge0.triangles) == 1:
+    #     edge_front.append(edge0)
+    # elif len(edge0.triangles) == 2:
+    #     edge0.edge_type = Edge.EdgeType.FROZEN
+    # else:
+    #     print("BAAAAAAAAAD")
+
+
+    # edge1 = get_edge(seed_tri.vertices[1], seed_tri.vertices[2])
+    # if edge1 is None:
+    #     edge1 = Edge(seed_tri.vertices[1], seed_tri.vertices[2], Edge.EdgeType.FRONT, triangles=[])
+    # edge1.triangles.append(seed_tri)
+    # if len(edge1.triangles) == 1:
+    #     edge_front.append(edge1)
+    # elif len(edge1.triangles) == 2:
+    #     edge1.edge_type = Edge.EdgeType.FROZEN
+    # else:
+    #     print("BAAAAAAAAAD")
+
+    # edge2 = get_edge(seed_tri.vertices[2], seed_tri.vertices[0])
+    # if edge2 is None:
+    #     edge2 = Edge(seed_tri.vertices[2], seed_tri.vertices[0], Edge.EdgeType.FRONT, triangles=[])
+    # edge2.triangles.append(seed_tri)
+    # if len(edge2.triangles) == 1:
+    #     edge_front.append(edge2)
+    # elif len(edge2.triangles) == 2:
+    #     edge2.edge_type = Edge.EdgeType.FROZEN
+    # else:
+    #     print("BAAAAAAAAAD")
+
+
+
+
     edge0 = Edge(seed_tri.vertices[0], seed_tri.vertices[1], Edge.EdgeType.FRONT, [seed_tri])
+    # for edge in seed_tri.vertices[2].edges:
+    #     if seed_tri.vertices[1] in edge.vertices:
+    #         print("BAAAAAAD")
     edge1 = Edge(seed_tri.vertices[1], seed_tri.vertices[2], Edge.EdgeType.FRONT, [seed_tri])
+    # for edge in seed_tri.vertices[0].edges:
+    #     if seed_tri.vertices[2] in edge.vertices:
+    #         print("BAAAAAAD")
     edge2 = Edge(seed_tri.vertices[2], seed_tri.vertices[0], Edge.EdgeType.FRONT, [seed_tri])
     edge_front += [edge0, edge1, edge2]
     
@@ -187,20 +303,53 @@ def expand_triangulation(triangle_mesh, seed_tri, unused, radius, boundary_edges
             curr_edge.edge_type = Edge.EdgeType.BOUNDARY
             boundary_edges.add(curr_edge)
             continue
+        # if new_vertex in unused:
+        #     unused.remove(new_vertex)
+        # new_tri = Triangle((curr_edge.vertices[0], curr_edge.vertices[1], new_vertex), circumcenter_pos=center) # check this order
+        # # print("created new triangle: ", curr_edge.vertices[0].index, curr_edge.vertices[1].index, new_vertex.index)
+        # triangle_mesh.append(new_tri)
+        # e_s is the edge linking source and new_vertex
+        # print("edges of vertex: ", new_vertex.index)
+        # print([(e.vertices[0].index, e.vertices[1].index) for e in new_vertex.edges])
+
+        # edge_s = get_edge(curr_edge.vertices[0], new_vertex)
+        # edge_t = get_edge(curr_edge.vertices[1], new_vertex)
+        # if (edge_s is not None and edge_s.edge_type != Edge.EdgeType.FRONT) or (edge_t is not None and edge_t.edge_type != Edge.EdgeType.FRONT):
+        #     curr_edge.edge_type = Edge.EdgeType.BOUNDARY
+        #     boundary_edges.add(curr_edge)
+        #     continue
+
         if new_vertex in unused:
             unused.remove(new_vertex)
         new_tri = Triangle((curr_edge.vertices[0], curr_edge.vertices[1], new_vertex), circumcenter_pos=center) # check this order
         # print("created new triangle: ", curr_edge.vertices[0].index, curr_edge.vertices[1].index, new_vertex.index)
         triangle_mesh.append(new_tri)
-        # e_s is the edge linking source and new_vertex
+
+        # if edge_s is not None:
+        #     edge_s.edge_type = Edge.EdgeType.FROZEN
+        #     if edge_s in boundary_edges:
+        #         boundary_edges.remove(edge_s)
+        # else:
+        #     edge_s = Edge(curr_edge.vertices[0], new_vertex, Edge.EdgeType.FRONT, [new_tri])
+        #     edge_front.append(edge_s)
+
+        # if edge_t is not None:
+        #     edge_t.edge_type = Edge.EdgeType.FROZEN
+        #     if edge_t in boundary_edges:
+        #         boundary_edges.remove(edge_t)
+        # else:
+        #     edge_t = Edge(curr_edge.vertices[1], new_vertex, Edge.EdgeType.FRONT, [new_tri])
+        #     edge_front.append(edge_t)
+
         edge_s = None
-        # print("edges of vertex: ", new_vertex.index)
-        # print([(e.vertices[0].index, e.vertices[1].index) for e in new_vertex.edges])
         for edge in new_vertex.edges:
             # print("new_vertex has edges")
             if curr_edge.vertices[0] in edge.vertices:
-                edge_s = edge 
+                edge_s = edge
                 edge.edge_type = Edge.EdgeType.FROZEN
+                # if edge in boundary_edges:
+                #     boundary_edges.remove(edge)
+                # print("froze an edge")
                 break 
         if not edge_s:
             # define a new edge
@@ -216,6 +365,9 @@ def expand_triangulation(triangle_mesh, seed_tri, unused, radius, boundary_edges
             if curr_edge.vertices[1] in edge.vertices:
                 edge_t = edge 
                 edge.edge_type = Edge.EdgeType.FROZEN
+                # if edge in boundary_edges:
+                #     boundary_edges.remove(edge)
+                # print("froze an edge")
                 break 
         if not edge_t:
             # define a new edge
@@ -223,6 +375,7 @@ def expand_triangulation(triangle_mesh, seed_tri, unused, radius, boundary_edges
             # print("created a new edge")
             edge_front.append(edge_t)
             # print("created and added new edge")
+
     return triangle_mesh, boundary_edges
 
 
@@ -241,7 +394,7 @@ def expand_triangulation2(triangle_mesh, radius, unused, edge_front):
         if new_vertex in unused:
             unused.remove(new_vertex)
         new_tri = Triangle((curr_edge.vertices[0], curr_edge.vertices[1], new_vertex), circumcenter_pos=center) # check this order
-        # print("created new triangle: ", curr_edge.vertices[0].index, curr_edge.vertices[1].index, new_vertex.index)
+        print("created new triangle: ", curr_edge.vertices[0].index, curr_edge.vertices[1].index, new_vertex.index)
         triangle_mesh.append(new_tri)
         # e_s is the edge linking source and new_vertex
         edge_s = None
@@ -398,6 +551,7 @@ def create_voxels(r):
     voxel_map key: voxel coordinate as tuple
     voxel_map value: vertex object 
     """
+    voxel_map.clear()
     for v in vertices:
         delta = 2 * r
         voxel_coords = v.coord // delta
@@ -433,6 +587,8 @@ def main(path_name):
     radius = set_r()
     # print(radius)
     create_voxels(radius)
+    # load_mesh("bun_res3_mesh_1_5")
+    # return
     result = bpa(radius)
     # visualize(radius)
     # print(voxel_map)
@@ -478,7 +634,7 @@ def write_output(triangle_mesh):
     PlyData([vertices_ply, faces_ply], text=True).write("../../outputs/bun_res4_mesh_1_5.ply")
 
 
-def visualize(radius, triangles, ball_centers):
+def visualize(radius, triangles, boundary_edges):
     pcd = o3d.geometry.PointCloud()
     points = np.array([(v.coord[0], v.coord[1], v.coord[2]) for v in vertices])
     color_mask = np.zeros((points.shape[0], 3))
@@ -488,6 +644,10 @@ def visualize(radius, triangles, ball_centers):
         color_mask[triangle.vertices[0].index] = np.array([0, 1, 0])
         color_mask[triangle.vertices[1].index] = np.array([0, 1, 0])
         color_mask[triangle.vertices[2].index] = np.array([0, 1, 0])
+
+    for edge in boundary_edges:
+        color_mask[edge.vertices[0].index] = np.array([1, 0, 0])
+        color_mask[edge.vertices[1].index] = np.array([1, 0, 0])
 
     pcd.points = o3d.utility.Vector3dVector(points)
     pcd.colors = o3d.utility.Vector3dVector(color_mask)
@@ -503,7 +663,19 @@ def visualize(radius, triangles, ball_centers):
         edges.append([indices[1], indices[2]])
         edges.append([indices[2], indices[0]])
 
-    print(len(edges))
+    bound_edges = []
+    for edge in boundary_edges:
+        bound_edges.append([v.index for v in edge.vertices])
+
+    bound_line_color = np.zeros((len(bound_edges), 3))
+    for i in range(len(bound_edges)):
+        bound_line_color[i] = np.array([1, 0, 0])
+    bound_line_set = o3d.geometry.LineSet()
+    bound_line_set.points = o3d.utility.Vector3dVector(points)
+    bound_line_set.lines = o3d.utility.Vector2iVector(bound_edges)
+    bound_line_set.colors = o3d.utility.Vector3dVector(bound_line_color)
+
+    # print(len(edges))
     line_set.lines = o3d.utility.Vector2iVector(edges)
 
     # draw ball
@@ -513,7 +685,7 @@ def visualize(radius, triangles, ball_centers):
     #     sphere.translate((ball_center[0], ball_center[1], ball_center[2]))
         # spheres.append(sphere)
 
-    spheres += [pcd, line_set]
+    spheres += [pcd, line_set, bound_line_set]
 
     o3d.visualization.draw_geometries(spheres)
     return
