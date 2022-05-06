@@ -45,32 +45,63 @@ def get_boundary_edges(triangle_mesh):
     for v in vertices:
         v.edges = []
 
-    edge_set = set()
+    edge_set = []
     for t in triangle_mesh:
         v, v1, v2 = t.vertices
 
         e = get_edge(v, v1)
         if e is None:
             e = Edge(v, v1, Edge.EdgeType.FRONT, [t])
-            edge_set.add(e)
+            edge_set.append(e)
         else:
             e.triangles.append(t)
 
         e1 = get_edge(v1, v2)
         if e1 is None:
             e1 = Edge(v1, v2, Edge.EdgeType.FRONT, [t])
-            edge_set.add(e1)
+            edge_set.append(e1)
         else:
             e1.triangles.append(t)
         
         e2 = get_edge(v2, v)
         if e2 is None:
             e2 = Edge(v2, v, Edge.EdgeType.FRONT, [t])
-            edge_set.add(e2)
+            edge_set.append(e2)
         else:
             e2.triangles.append(t)
 
+    for e in edge_set:
+        if len(e.triangles) == 1:
+            e.edge_type = Edge.EdgeType.FRONT
+        elif len(e.triangles) == 2:
+            e.edge_type = Edge.EdgeType.FROZEN
+        else:
+            print("BAAAAAAAAAAAAAAAAAAD", len(e.triangles))
+
     return [e for e in edge_set if len(e.triangles) == 1]
+
+
+def fill_holes(triangle_mesh, boundary_edges):
+    for e in boundary_edges:
+        v = e.vertices[0]
+        v1 = e.vertices[1]
+        adj_vertices = []
+        for e1 in v1.edges:
+            if e1 not in boundary_edges:
+                continue
+            if e1.vertices[0] == v1:
+                adj_vertices.append(e1.vertices[1])
+        for v2 in adj_vertices:
+            e2 = get_edge(v, v2)
+            if e2 is None:
+                continue
+            if e2 not in boundary_edges:
+                continue
+            new_tri = Triangle((v, v2, v1))
+            triangle_mesh.append(new_tri)
+            print("added triangle: ", [v.index for v in new_tri.vertices])
+            break
+
 
 
 
@@ -186,33 +217,41 @@ def bpa(radius):
     # visualize(radius, updated_mesh, [ball_center])
     print("num seed triangles: ", cnt)
     print("size of mesh after first pass: ", len(updated_mesh))
-    print("boundary edges: ", len(boundary_edges))
-    for edge in boundary_edges:
-        print([v.index for v in edge.vertices], len(edge.triangles), [v.index for v in edge.triangles[0].vertices], edge.edge_type)
+    # print("boundary edges: ", len(boundary_edges))
+    # for edge in boundary_edges:
+    #     print([v.index for v in edge.vertices], len(edge.triangles), [v.index for v in edge.triangles[0].vertices], edge.edge_type)
 
-
+    correct_ordering(updated_mesh)
+    write_output(updated_mesh)
     print("getting boundary edges")
     boundary_edges = get_boundary_edges(updated_mesh)
-    print("got boundary edges")
-    visualize(radius, updated_mesh, boundary_edges)
+    print("boundary edges: ", len(boundary_edges))
+    visualize(radius, updated_mesh, boundary_edges, [])
+    # return updated_mesh
+    fill_holes(updated_mesh, boundary_edges)
+    print("size of mesh after filling holes: ", len(updated_mesh))
     return updated_mesh
 
-    radius *= 2 # second pass
+    radius *= 1.5 # second pass
     create_voxels(radius)
-    print("boundary_edges: ", len(boundary_edges))
+    # print("boundary_edges: ", len(boundary_edges))
     edge_front = []
+    valid_centers = []
     for edge in boundary_edges:
         adjacent_facet = edge.triangles[0]
         opposite = [v for v in adjacent_facet.vertices if v not in edge.vertices][0]
         center = compute_ball_center(radius, edge.vertices[0], opposite, edge.vertices[1])
-        print("computed ball center")
+        # print("computed ball center")
         if center is None:
             continue
+        # print("was valid ball")
         if is_empty_ball(edge.vertices[0], opposite, edge.vertices[1], center, radius):
             edge.edge_type = Edge.EdgeType.FRONT
             edge_front.append(edge)
+            valid_centers.append(center)
     print("edge front: ", len(edge_front))
-    breakpoint()
+    print("valid balls: ", len(valid_centers))
+    visualize(radius, updated_mesh, boundary_edges, valid_centers)
     updated_mesh = expand_triangulation2(updated_mesh, radius, unused_vertices, edge_front)
     print("size of mesh after second pass: ", len(updated_mesh))
     return updated_mesh
@@ -583,6 +622,13 @@ def set_r():
     return average * 1.5
 
 def main(path_name):
+    pcd = o3d.io.read_point_cloud("../../inputs/ply/bun_zipper_res2.ply")
+    color_mask = np.zeros((len(pcd.points), 3))
+    pcd.colors = o3d.utility.Vector3dVector(color_mask)
+    o3d.visualization.draw_geometries([pcd])
+    return
+
+
     read_input(path_name)
     radius = set_r()
     # print(radius)
@@ -594,9 +640,9 @@ def main(path_name):
     # print(voxel_map)
     
     correct_ordering(result)
-    write_output(result)
-    model = o3d.io.read_triangle_mesh("../../outputs/bun_res4_mesh_1_5.ply")
-    o3d.visualization.draw_geometries([model])
+    write_output(result, True)
+    # model = o3d.io.read_triangle_mesh("../../outputs/bun_res4_mesh_1_5.ply")
+    # o3d.visualization.draw_geometries([model])
 
 
 def correct_ordering(triangle_mesh):
@@ -619,7 +665,7 @@ def correct_ordering(triangle_mesh):
 
 
 # in ply format, to ../../outputs
-def write_output(triangle_mesh):
+def write_output(triangle_mesh, second_pass=False):
     vertices_np = np.empty((len(vertices),), dtype=[('x', 'f4'), ('y', 'f4'), ('z', 'f4')])
     faces_np = np.empty((len(triangle_mesh),),  dtype=[('vertex_indices', 'i4', (3,))])
     for i in range(len(vertices)):
@@ -631,10 +677,11 @@ def write_output(triangle_mesh):
     # print(faces_np)
     vertices_ply = PlyElement.describe(vertices_np, 'vertex')
     faces_ply = PlyElement.describe(faces_np, 'face')
-    PlyData([vertices_ply, faces_ply], text=True).write("../../outputs/bun_res4_mesh_1_5.ply")
+    file_name = "../../outputs/bun_res2_mesh_1.5_2.ply" if second_pass else "../../outputs/bun_res2_mesh_1.5.ply"
+    PlyData([vertices_ply, faces_ply], text=True).write(file_name)
 
 
-def visualize(radius, triangles, boundary_edges):
+def visualize(radius, triangles, boundary_edges, centers):
     pcd = o3d.geometry.PointCloud()
     points = np.array([(v.coord[0], v.coord[1], v.coord[2]) for v in vertices])
     color_mask = np.zeros((points.shape[0], 3))
@@ -680,10 +727,10 @@ def visualize(radius, triangles, boundary_edges):
 
     # draw ball
     spheres = []
-    # for ball_center in ball_centers:
-    #     sphere = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
-    #     sphere.translate((ball_center[0], ball_center[1], ball_center[2]))
-        # spheres.append(sphere)
+    for center in centers[:10]:
+        sphere = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
+        sphere.translate((center[0], center[1], center[2]))
+        spheres.append(sphere)
 
     spheres += [pcd, line_set, bound_line_set]
 
@@ -746,4 +793,4 @@ def visualize(radius, triangles, boundary_edges):
 
 vertices = []
 voxel_map= {}
-main("clean_bun_res4")
+main("clean_bun_res2")
