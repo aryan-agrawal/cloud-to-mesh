@@ -14,10 +14,10 @@
     <link rel="stylesheet" type="text/css" href="style.css" media="screen" />
 </head>
 <body>
-    <br />
+    
     <h1 align="middle">Final Project Writeup - Point Cloud to Triangle Mesh</h1>
-    <h2 align="middle">Aryan Agrawal, Ruslana Yurtyn, Aadith Srinivasan, Tarun Singh</h2>
-    <br />
+    <h2 align="middle" style="color:grey">Aryan Agrawal, Ruslana Yurtyn, Aadith Srinivasan, Tarun Singh</h2>
+    <hr>
 
     <div class="padded">
         <div align="middle">
@@ -43,7 +43,7 @@
         </div>
 
         <h2 align="middle">Technical Approach</h2>
-        <h3 align="middle">Input Parsing</h3>
+        <h3 align="left">Input Parsing</h3>
         <p>
             The implementation of this project had several main parts. First, we had to clean our input files. The files we used 
             were downloaded from the <a href="http://graphics.stanford.edu/data/3Dscanrep/">Stanford 3D Scanning Repository</a>. This 
@@ -66,7 +66,7 @@
                 </tr>
             </table>
         </div>
-        <h3 align="middle">Radius Selection</h3>
+        <h3 align="left">Radius Selection</h3>
         <p>
             A large part of the algorithm we will use relies on choosing a good radius for our ball. 
             The use of the ball will be explained in detail in future sections, but it is important for us
@@ -77,7 +77,7 @@
                takes O(n^2) time. As a result, it takes quite a long time to find the radius when we run on increasingly
                 higher resolution models. Luckily, the radius only needs to be computed once each time we run the algorithm.  
         </p>
-        <h3 align="middle">Voxel Creation</h3>
+        <h3 align="left">Voxel Creation</h3>
         <p>
             To make future computation simpler, and more efficient, we split all the vertices into voxels of size 2*r. 
             Using the radius r computer in the previous step, we place a vertex in a voxel if the vertex coordinates 
@@ -96,7 +96,7 @@
                 </tr>
             </table>
         </div>
-        <h3 align="middle">Main Algorithm - Summary</h3>
+        <h3 align="left">Main Algorithm - Summary</h3>
         <p>
             The main part of the algorithm we implemented for this project was inspired by <a href="https://vgc.poly.edu/~csilva/papers/tvcg99.pdf">the ball-pivot algorithm</a> 
             put forward by Bernardini et. al. 
@@ -115,7 +115,7 @@
                 </tr>
             </table>
         </div>
-        <h3 align="middle">Main Algorithm - Seed Selection</h3>
+        <h3 align="left">Main Algorithm - Seed Selection</h3>
         <p>
             The first stage of the algorithm is finding seed triangles. The search for a seed triangle takes as input the set of 
             all unused vertices and the desired radius of the sphere. Then, we iterate over the unused vertices. For each unused vertex 
@@ -138,7 +138,7 @@
             To do this, we can check all other points in the neighborhood of the center of the sphere to ensure that none of them fall within the sphere.
              If this is the case, we have found a valid seed triangle, so we can return the candidate with vertices v, v1, and v2 as our result.
         </p>
-        <div align="middle">
+        <!-- <div align="middle">
             <table style="width=100%">
                 <tr>
                     <td>
@@ -153,8 +153,15 @@
                     </td>
                 </tr>
             </table>
-        </div>
-        <h3 align="middle">Main Algorithm - Mesh Expansion</h3>
+        </div> -->
+        
+        <img src="images/image8.png" style="float: left; width: 29%; margin-right: 1%; margin-bottom: 0.5em;">
+        <img src="images/image16.png" style="float: left; width: 29%; margin-right: 1%; margin-bottom: 0.5em;">
+        <img src="images/image23.png" style="float: left; width: 29%; margin-right: 1%; margin-bottom: 0.5em;">
+        <p style="clear: both;"></p>
+        <figcaption align="middle"> A Few Different Seed Triangles</figcaption>
+
+        <h3 align="left">Main Algorithm - Mesh Expansion</h3>
         <p>
             After we have found a valid seed triangle for our given radius and unused vertices, we can begin mesh expansion. To do this, 
             we maintain a “front” of edges, which is a list of all the existing edges we have yet to roll our sphere over. The first step 
@@ -182,7 +189,7 @@
                 </tr>
             </table>
         </div>
-        <h3 align="middle">Post Processing - Hole Filling</h3>
+        <h3 align="left">Post Processing - Hole Filling</h3>
         <p>
             After we cannot find any more valid seed triangles, we do some post-processing steps to fill in some of the holes in the final mesh.
              To do this, we iterate through all the boundary edges we have created, and for any three that form a triangle, we fill in that 
